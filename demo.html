@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Iframe Overlay</title>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        iframe {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .overlay {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 150px;
+            height: 100px;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+        }
+
+        elevenlabs-convai {
+            position: fixed !important;
+            bottom: -10px !important;
+            z-index: 99999 !important;
+            opacity: 0 !important;
+        }
+
+        elevenlabs-convai.el-active {
+            opacity: 0 !important;
+        }
+
+        elevenlabs-convai.el-ready {
+            opacity: 1 !important;
+            transition: opacity 0.25s ease !important;
+        }
+
+        @media (max-width: 768px) {
+
+            elevenlabs-convai.el-active,
+            elevenlabs-convai.el-ready {
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100% !important;
+                height: 100dvh !important;
+                height: 100% !important;
+            }
+        }
+
+        body.chat-open {
+            position: fixed !important;
+            width: 100% !important;
+            height: 100% !important;
+            overflow: hidden !important;
+            touch-action: none !important;
+        }
+
+        #chatBtn {
+            position: fixed;
+            width: 185px;
+            height: 70px;
+            bottom: 27px;
+            right: 42px;
+            z-index: 100000;
+            background-color: #c0392b;
+            /* ← CHANGE to client brand color */
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            font-family: sans-serif;
+        }
+
+        #chatBtn:hover {
+            background-color: #a93226;
+        }
+
+        /* ← darker shade of brand color */
+        #chatBackdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 99998;
+            touch-action: none;
+        }
+
+        #chatCloseBtn {
+            display: none;
+            position: fixed;
+            z-index: 2147483646;
+            background-color: #c0392b;
+            /* ← same brand color */
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 18px;
+            line-height: 32px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            font-family: sans-serif;
+        }
+
+        @media (max-width: 768px) {
+            #chatCloseBtn {
+                display: none !important;
+            }
+        }
+
+        #chatCloseBtn:hover {
+            background-color: #a93226;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <iframe src="https://otgconsulting.net/"></iframe>
+
+    <elevenlabs-convai agent-id="agent_0901kkmn6tbherh8wraq48djwj46"></elevenlabs-convai>
+    <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+
+    <button id="chatBtn">Chat</button>
+    <div id="chatBackdrop"></div>
+    <button id="chatCloseBtn">✕</button>
+
+    <script>
+        (function () {
+            var chatOpen = false;
+            var shadowStyleInjected = false;
+            var shadowCloseInjected = false;
+            var savedScrollY = 0;
+
+            function isMobile() { return window.innerWidth <= 768; }
+
+            function injectShadowStyle(sr) {
+                if (shadowStyleInjected) return;
+                var style = document.createElement("style");
+                style.textContent =
+                    "input, textarea, [contenteditable] { font-size: 16px !important; } " +
+                    ".chat-close-btn { position: absolute !important; top: 8px; right: 8px; " +
+                    "z-index: 999999; " +
+                    "background: #c0392b; color: white; border: none; " +
+                    "width: 32px; height: 32px; border-radius: 50%; " +
+                    "font-size: 18px; line-height: 32px; text-align: center; " +
+                    "cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); } " +
+                    "@media (min-width: 769px) { .chat-close-btn { display: none !important; } } " +
+                    "@media (max-width: 768px) { " +
+                    ".overlay { inset: 0 !important; overflow: hidden !important; " +
+                    "justify-content: flex-start !important; align-items: stretch !important; } " +
+                    ".sheet { max-width: 100% !important; width: 100% !important; " +
+                    "max-height: 100dvh !important; max-height: 100% !important; " +
+                    "height: 100% !important; " +
+                    "border-radius: 0 !important; " +
+                    "display: flex !important; flex-direction: column !important; " +
+                    "overscroll-behavior: contain !important; " +
+                    "position: relative !important; } " +
+                    "}";
+                sr.appendChild(style);
+                shadowStyleInjected = true;
+            }
+
+            function injectShadowClose(sr) {
+                if (shadowCloseInjected) return;
+                var sheet = sr.querySelector(".sheet");
+                if (!sheet) return;
+                var btn = document.createElement("button");
+                btn.className = "chat-close-btn";
+                btn.textContent = "\u2715";
+                btn.addEventListener("click", function (e) {
+                    e.stopPropagation();
+                    closeChat();
+                });
+                sheet.insertBefore(btn, sheet.firstChild);
+                shadowCloseInjected = true;
+            }
+
+            function hideBranding(sr) {
+                var allEls = sr.querySelectorAll("*");
+                for (var i = 0; i < allEls.length; i++) {
+                    var t = allEls[i].textContent ? allEls[i].textContent.trim() : "";
+                    if (t === "Powered by ElevenLabs Agents" || t === "Powered by ElevenLabs") {
+                        allEls[i].style.setProperty("display", "none", "important");
+                    }
+                }
+            }
+
+            function autoStartChat(sr) {
+                var btns = sr.querySelectorAll("button");
+                for (var i = 0; i < btns.length; i++) {
+                    var txt = btns[i].textContent.trim();
+                    if (txt === "Start a chat" || txt === "Start a call") {
+                        btns[i].click(); return true;
+                    }
+                }
+                return false;
+            }
+
+            function isChatReady(sr) {
+                return sr.querySelectorAll("button[aria-label='Send']").length > 0;
+            }
+
+            function positionCloseBtn() {
+                var widget = document.querySelector("elevenlabs-convai");
+                var btn = document.getElementById("chatCloseBtn");
+                if (!widget || !btn) return;
+                var sr = widget.shadowRoot;
+                if (!sr) return;
+                var sheet = sr.querySelector(".sheet");
+                if (!sheet) return;
+                var sheetRect = sheet.getBoundingClientRect();
+                btn.style.top = (sheetRect.top - 16) + "px";
+                btn.style.right = (window.innerWidth - sheetRect.right - 16) + "px";
+            }
+
+            function closeChat() {
+                var widget = document.querySelector("elevenlabs-convai");
+                if (!widget) return;
+                widget.classList.remove("el-active", "el-ready");
+                chatOpen = false;
+                document.getElementById("chatCloseBtn").style.display = "none";
+                document.getElementById("chatBackdrop").style.display = "none";
+                document.getElementById("chatBtn").style.display = "block";
+                document.body.classList.remove("chat-open");
+                document.body.style.top = "";
+                window.scrollTo(0, savedScrollY);
+                var vp = document.querySelector("meta[name=viewport]");
+                if (vp && vp.dataset.orig) vp.setAttribute("content", vp.dataset.orig);
+            }
+
+            function lockBody() {
+                savedScrollY = window.scrollY;
+                document.body.classList.add("chat-open");
+                document.body.style.top = "-" + savedScrollY + "px";
+                var vp = document.querySelector("meta[name=viewport]");
+                if (vp) {
+                    if (!vp.dataset.orig) vp.dataset.orig = vp.getAttribute("content");
+                    vp.setAttribute("content",
+                        "width=device-width, initial-scale=1, maximum-scale=1, " +
+                        "user-scalable=no, interactive-widget=resizes-content");
+                }
+            }
+
+            function hideSquarespacePopups() {
+                [".sqs-cookie-banner-v2", "[class*=\"cookie\"]", "[class*=\"announcement\"]",
+                    ".sqs-modal-overlay"].forEach(function (sel) {
+                    document.querySelectorAll(sel).forEach(function (el) {
+                        el.style.setProperty("display", "none", "important");
+                    });
+                });
+            }
+
+            function pollWidgetState() {
+                var widget = document.querySelector("elevenlabs-convai");
+                if (!widget || !widget.shadowRoot) return;
+                var sr = widget.shadowRoot;
+                injectShadowStyle(sr);
+                hideBranding(sr);
+                if (!chatOpen) return;
+                if (isMobile()) hideSquarespacePopups();
+
+                if (!widget.classList.contains("el-ready")) {
+                    autoStartChat(sr);
+                    if (isChatReady(sr)) {
+                        hideBranding(sr);
+                        injectShadowClose(sr);
+                        widget.classList.add("el-ready");
+                        if (isMobile()) {
+                            document.getElementById("chatBackdrop").style.display = "block";
+                            lockBody();
+                        } else {
+                            document.getElementById("chatCloseBtn").style.display = "block";
+                            positionCloseBtn();
+                        }
+                    }
+                } else if (!isMobile()) {
+                    positionCloseBtn();
+                }
+            }
+
+            function initWidget() {
+                var widget = document.querySelector("elevenlabs-convai");
+                if (!widget || !widget.shadowRoot) { setTimeout(initWidget, 500); return; }
+                injectShadowStyle(widget.shadowRoot);
+                hideBranding(widget.shadowRoot);
+                setInterval(pollWidgetState, 200);
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                setTimeout(initWidget, 1500);
+                document.getElementById("chatBtn").addEventListener("click", function () {
+                    var widget = document.querySelector("elevenlabs-convai");
+                    if (!widget) return;
+                    widget.classList.add("el-active");
+                    this.style.display = "none";
+                    chatOpen = true;
+                });
+                document.getElementById("chatCloseBtn").addEventListener("click", closeChat);
+            });
+        })();
+    </script>
+</body>
+</html>
